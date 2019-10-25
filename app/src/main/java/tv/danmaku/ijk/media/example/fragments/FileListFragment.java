@@ -17,60 +17,50 @@
 
 package tv.danmaku.ijk.media.example.fragments;
 
-import android.app.Activity;
+import android.Manifest;
+import android.content.ContentResolver;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.media.MediaExtractor;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
-import android.support.v4.app.LoaderManager;
-import android.support.v4.content.Loader;
-import android.support.v4.widget.SimpleCursorAdapter;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.ImageView;
+import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.TextView;
-
-import com.google.android.exoplayer2.ExoPlayer;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 import tv.danmaku.ijk.media.example.R;
-import tv.danmaku.ijk.media.example.content.PathCursor;
-import tv.danmaku.ijk.media.example.content.PathCursorLoader;
-import tv.danmaku.ijk.media.example.eventbus.FileExplorerEvents;
+import tv.danmaku.ijk.media.example.activities.VideoActivity;
 
-public class FileListFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor> {
-    private static final String ARG_PATH = "path";
+public class FileListFragment extends Fragment implements AdapterView.OnItemClickListener {
 
-    private TextView mPathView;
-    private ListView mFileListView;
-    private VideoAdapter mAdapter;
-    private String mPath;
+    private final int REQUEST_CODE = 0x100;
+    private ArrayAdapter<String> mAdapter;
 
-    public static FileListFragment newInstance(String path) {
-        FileListFragment f = new FileListFragment();
-
-        // Supply index input as an argument.
-        Bundle args = new Bundle();
-        args.putString(ARG_PATH, path);
-        f.setArguments(args);
-        return f;
+    public static FileListFragment newInstance() {
+        return new FileListFragment();
     }
 
     @Nullable
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         ViewGroup viewGroup = (ViewGroup) inflater.inflate(R.layout.fragment_file_list, container, false);
-        mPathView = (TextView) viewGroup.findViewById(R.id.path_view);
-        mFileListView = (ListView) viewGroup.findViewById(R.id.file_list_view);
-
-        mPathView.setVisibility(View.VISIBLE);
+        ListView videoList = (ListView) viewGroup.findViewById(R.id.file_list_view);
+        mAdapter = new ArrayAdapter<String>(container.getContext(), R.layout.textview);
+        videoList.setAdapter(mAdapter);
+        videoList.setOnItemClickListener(this);
 
         return viewGroup;
     }
@@ -78,136 +68,59 @@ public class FileListFragment extends Fragment implements LoaderManager.LoaderCa
     @Override
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
-
-        Activity activity = getActivity();
-
-        Bundle bundle = getArguments();
-        if (bundle != null) {
-            mPath = bundle.getString(ARG_PATH);
-            mPath = new File(mPath).getAbsolutePath();
-            mPathView.setText(mPath);
+        if(ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
+            initData(getActivity());
+        }else {
+            ActivityCompat.requestPermissions(getActivity(),new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},REQUEST_CODE);
         }
+    }
 
-        mAdapter = new VideoAdapter(activity);
-        mFileListView.setAdapter(mAdapter);
-        mFileListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, final int position, final long id) {
-                String path = mAdapter.getFilePath(position);
-                if (TextUtils.isEmpty(path))
-                    return;
-                FileExplorerEvents.getBus().post(new FileExplorerEvents.OnClickFile(path));
-            }
-        });
+    private void initData(Context context) {
+        mAdapter.addAll(getLocalVideo(context));
+    }
 
-        getLoaderManager().initLoader(1, null, this);
+    private List<String> getLocalVideo(Context context) {
+        List<String> videos = new ArrayList<>();
+        Uri originalUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        ContentResolver cr = context.getContentResolver();
+        String selection = MediaStore.Video.Media.MIME_TYPE + "=? or "
+                + MediaStore.Video.Media.MIME_TYPE + "=?";
+        String[] selectionArgs = new String[]{"video/mp4"};
+        Cursor cursor = cr.query(originalUri, null, selection, selectionArgs, null);
+        if (cursor != null && cursor.moveToFirst()) {
+            do {
+                try {
+                    String data = cursor.getString(cursor.getColumnIndex(MediaStore.Video.VideoColumns.DATA));
+                    videos.add(data);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } while (cursor.moveToNext());
+            cursor.close();
+        }
+        return videos;
     }
 
     @Override
-    public Loader<Cursor> onCreateLoader(int id, Bundle args) {
-        if (TextUtils.isEmpty(mPath))
-            return null;
-        return new PathCursorLoader(getActivity(), mPath);
-    }
-
-    @Override
-    public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
-        mAdapter.swapCursor(data);
-        mAdapter.notifyDataSetChanged();
-    }
-
-    @Override
-    public void onLoaderReset(Loader<Cursor> loader) {
-
-    }
-
-    final class VideoAdapter extends SimpleCursorAdapter {
-        final class ViewHolder {
-            public ImageView iconImageView;
-            public TextView nameTextView;
-        }
-
-        public VideoAdapter(Context context) {
-            super(context, android.R.layout.simple_list_item_2, null,
-                    new String[]{PathCursor.CN_FILE_NAME, PathCursor.CN_FILE_PATH},
-                    new int[]{android.R.id.text1, android.R.id.text2}, 0);
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View view = convertView;
-            if (view == null) {
-                LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-                view = inflater.inflate(R.layout.fragment_file_list_item, parent, false);
-            }
-
-            ViewHolder viewHolder = (ViewHolder) view.getTag();
-            if (viewHolder == null) {
-                viewHolder = new ViewHolder();
-                viewHolder.iconImageView = (ImageView) view.findViewById(R.id.icon);
-                viewHolder.nameTextView = (TextView) view.findViewById(R.id.name);
-            }
-
-            if (isDirectory(position)) {
-                viewHolder.iconImageView.setImageResource(R.drawable.ic_theme_folder);
-            } else if (isVideo(position)) {
-                viewHolder.iconImageView.setImageResource(R.drawable.ic_theme_play_arrow);
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if(REQUEST_CODE == requestCode && permissions.length > 0 && grantResults.length > 0){
+            if(Manifest.permission.READ_EXTERNAL_STORAGE.equals(permissions[0])
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                initData(getActivity());
             } else {
-                viewHolder.iconImageView.setImageResource(R.drawable.ic_theme_description);
+                getActivity().finish();
             }
-            viewHolder.nameTextView.setText(getFileName(position));
-
-            return view;
-        }
-
-        @Override
-        public long getItemId(int position) {
-            final Cursor cursor = moveToPosition(position);
-            if (cursor == null)
-                return 0;
-
-            return cursor.getLong(PathCursor.CI_ID);
-        }
-
-        Cursor moveToPosition(int position) {
-            final Cursor cursor = getCursor();
-            if (cursor.getCount() == 0 || position >= cursor.getCount()) {
-                return null;
-            }
-            cursor.moveToPosition(position);
-            return cursor;
-        }
-
-        public boolean isDirectory(int position) {
-            final Cursor cursor = moveToPosition(position);
-            if (cursor == null)
-                return true;
-
-            return cursor.getInt(PathCursor.CI_IS_DIRECTORY) != 0;
-        }
-
-        public boolean isVideo(int position) {
-            final Cursor cursor = moveToPosition(position);
-            if (cursor == null)
-                return true;
-
-            return cursor.getInt(PathCursor.CI_IS_VIDEO) != 0;
-        }
-
-        public String getFileName(int position) {
-            final Cursor cursor = moveToPosition(position);
-            if (cursor == null)
-                return "";
-
-            return cursor.getString(PathCursor.CI_FILE_NAME);
-        }
-
-        public String getFilePath(int position) {
-            final Cursor cursor = moveToPosition(position);
-            if (cursor == null)
-                return "";
-
-            return cursor.getString(PathCursor.CI_FILE_PATH);
         }
     }
+
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        String path = mAdapter.getItem(position);
+        if(!TextUtils.isEmpty(path)) {
+            File f = new File(path);
+            VideoActivity.intentTo(getActivity(), f.getPath(), f.getName());
+        }
+    }
+
 }

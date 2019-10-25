@@ -21,8 +21,14 @@ android {
     }
     sourceSets {
         main {
-            jniLibs.srcDirs = []
+            jniLibs.srcDirs = ['src/main/jniLibs']
         }
+    }
+    packagingOptions {
+        // 有冲突选择就第一个最为打包内容
+        pickFirst "**/libffmpeg_mediametadataretriever_jni.so"
+        pickFirst "**/libijksdl.so"
+        pickFirst "**/libijkplayer.so"
     }
     externalNativeBuild {
         cmake {
