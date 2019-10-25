@@ -37,14 +37,16 @@ import tv.danmaku.ijk.media.example.fragments.FileListFragment;
 
 public class FileExplorerActivity extends AppActivity {
 
+    Fragment listFragment;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        Fragment newFragment = FileListFragment.newInstance();
+        listFragment = FileListFragment.newInstance();
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
 
-        transaction.replace(R.id.body, newFragment);
+        transaction.replace(R.id.body, listFragment);
 
         transaction.commit();
     }
@@ -57,5 +59,11 @@ public class FileExplorerActivity extends AppActivity {
     @Override
     protected void onPause() {
         super.onPause();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        listFragment.onRequestPermissionsResult(requestCode,permissions,grantResults);
     }
 }

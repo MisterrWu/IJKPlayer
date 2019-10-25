@@ -104,7 +104,7 @@ static int android_render_rgb_on_rgb(ANativeWindow_Buffer *out_buffer, const SDL
 {
     // SDLTRACE("SDL_VoutAndroid: android_render_rgb_on_rgb(%p)", overlay);
     LOGI("bpp :%d",bpp);
-    assert(overlay->format == SDL_FCC_RV16);
+    //assert(overlay->format == SDL_FCC_RV16);
     assert(overlay->planes == 1);
 
     int min_height = IJKMIN(out_buffer->height, overlay->h);
